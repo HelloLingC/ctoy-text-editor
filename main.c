@@ -1,67 +1,47 @@
-#include <stdio.h>
+#include "button.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 
+static int pageStatus = 0;
+
 void sdl_check(bool res) {
-  if(!res) {
+  if (!res) {
     SDL_Log("SDL Failed: %s", SDL_GetError());
-    //exit(0);
-      }
+    exit(0);
+  }
 }
-
-
-typedef struct {
-  SDL_FRect rect;
-  const char *text;
-  bool hovered;
-  bool pressed;
-} Button;
-
-
 // Mainly used for button status detection
 static bool point_in_rect(float x, float y, const SDL_FRect *r) {
-  return x>=r->x && x<=r->x + r->w && y >= r->y && y<= r->y + r->h; 
+  return x >= r->x && x <= r->x + r->w && y >= r->y && y <= r->y + r->h;
 }
 
-static void draw_button_text(SDL_Renderer *renderer, TTF_Font *font,
-                             const char *text, SDL_FRect box) {
-  SDL_Color color = {255, 255, 255, 255};
-  SDL_Surface* surface = TTF_RenderText_Blended(font, text, 0, color);
-  SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-  SDL_DestroySurface(surface);
-
-  // Font width and height
-  float tw, th = 0.0f;
-  sdl_check(SDL_GetTextureSize(texture, &tw, &th));
-
-  // make font centered
-  SDL_FRect dst = {
-    box.x + (box.w - tw) / 2.0f,
-    box.y + (box.h - th) / 2.0f,
-    tw,
-    th 
-  };
-  SDL_RenderTexture(renderer, texture, NULL, &dst);
-  SDL_DestroyTexture(texture);
-}
-
-static void draw_button(SDL_Renderer *renderer, TTF_Font * font, Button *btn) {
-  if(btn->pressed) {
-    SDL_SetRenderDrawColor(renderer, 40, 90, 170, 255);
-  } else if(btn->hovered) {
-    SDL_SetRenderDrawColor(renderer, 70, 130, 220, 255);
-  } else {
-    SDL_SetRenderDrawColor(renderer, 50, 100, 120, 255);
+char *read_file(const char *f_path) {
+  FILE *fp = fopen(f_path, "r");
+  if (fp == NULL) {
+    printf("Cannot read file, its unreachable: [%s]", f_path);
+    exit(0); // Todo: no abruptly quit
   }
-  SDL_RenderFillRect(renderer, &btn->rect);
-
-  //SDL_SetRenderDrawColor(renderer, 255, 255, 255, 25);
-  //SDL_RenderFillRect(renderer, &btn->rect);
-
-  draw_button_text(renderer, font, btn->text, btn->rect);
+  // fseek moves the file position indicator associated with the FILE stream.
+  // SEED_END is a macro in C std lib, C uses API from the OS to
+  // check file's metadata to get the file size
+  // SEED_END seems can only be used in file, not network stream, pipe stream...
+  fseek(fp, 0, SEEK_END);
+  long size = ftell(fp);
+  rewind(fp);
+  printf("Try to read a file with size of %ld", size);
+  char *text = malloc(size + 1);
+  if (!text) {
+    printf("Unable to malloc a string when reading file!");
+    exit(0);
+  }
+  fread(text, 1, size, fp);
+  text[size] = '\0';
+  fclose(fp);
+  return text;
 }
 
 int main(void) {
@@ -79,68 +59,96 @@ int main(void) {
     exit(0);
   }
 
+  TTF_Font *small_font =
+      TTF_OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", 16.0f);
+
   SDL_Window *window = NULL;
   SDL_Renderer *renderer = NULL;
-  
+
   sdl_check(
       SDL_CreateWindowAndRenderer("Hello", 800, 600, 0, &window, &renderer));
 
-
-  
   SDL_Color white = {255, 255, 255, 255};
-
+  // Prepare title
   SDL_Surface *surface =
       TTF_RenderText_Blended(font, "Hello and Welcome", 0, white);
-  
   SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
 
   float tw, th = 0;
   SDL_GetTextureSize(texture, &tw, &th);
 
-   SDL_FRect dst = {
-    800/2 - tw/2, 50.0f, (float) surface->w, (float) surface->h
-   };
-  
+  SDL_FRect dst = {800 / 2 - tw / 2, 50.0f, (float)surface->w,
+                   (float)surface->h};
   SDL_DestroySurface(surface);
 
-  Button btn = {
-    .rect = {300.0f, 250.0f, 200.0f, 70.0f},
-    .text = "Open file",
-    .hovered = false,
-    .pressed = false
-  };
+  Button btn = {.rect = {300.0f, 250.0f, 200.0f, 70.0f},
+                .text = "Open file",
+                .hovered = false,
+                .pressed = false};
 
-  
-  
+  char *text = "DEFAULT TEXT";
+
   bool running = true;
-  while(running) {
+  while (running) {
     SDL_Event event;
-    while(SDL_PollEvent(&event)) {
-      if(event.type == SDL_EVENT_QUIT) {
-	running = false;
+    while (SDL_PollEvent(&event)) {
+      if (event.type == SDL_EVENT_QUIT) {
+        running = false;
       }
 
-      if(event.type == SDL_EVENT_MOUSE_MOTION) {
-	btn.hovered = point_in_rect(event.motion.x, event.motion.y, &btn.rect); 
+      if (event.type == SDL_EVENT_MOUSE_MOTION) {
+        btn.hovered = point_in_rect(event.motion.x, event.motion.y, &btn.rect);
       }
 
-      if(event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
-	if(point_in_rect(event.button.x, event.button.y, &btn.rect)) {
-	  printf("CLICKED\n");
-	}
+      if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+          event.button.button == SDL_BUTTON_LEFT) {
+        if (point_in_rect(event.button.x, event.button.y, &btn.rect)) {
+          printf("CLICKED\n");
+          FILE *pipe = popen("osascript -e 'POSIX path of (choose file)'", "r");
+          if (pipe) {
+            char path[1024];
+            if (fgets(path, sizeof(path), pipe) != NULL) {
+              printf("File selected: %s", path);
+            }
+
+            // fgets parsing stops if a newline character is found
+            // and fgets keeps the newline when it reads a line
+            // and '\n' will cause fopen cannot open the file
+            // we need remove the newline:
+            path[strcspn(path, "\n")] = '\0';
+
+            text = read_file(path);
+            pageStatus = 1;
+          } else {
+            SDL_Log("Unabled to open pipe");
+          }
+        }
       }
     }
-    SDL_SetRenderDrawColor(renderer, 20, 20,30,255);
+    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 255);
     SDL_RenderClear(renderer);
 
-    SDL_RenderTexture(renderer, texture, NULL, &dst);
+    if (pageStatus == 0) {
+      // Draw main title
+      SDL_RenderTexture(renderer, texture, NULL, &dst);
 
-    draw_button(renderer, font, &btn);
+      draw_button(renderer, font, &btn);
+    } else if (pageStatus == 1) {
+      // char* line = strtok(text, "\n");
+      // while(line) {
+
+      // }
+      SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(
+          small_font, text, strlen(text), white, 0);
+      SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+      SDL_FRect dst = {.x = 10, .y = 10, .w = surface->w, .h = surface->h};
+      SDL_RenderTexture(renderer, texture, NULL, &dst);
+    }
+
     SDL_RenderPresent(renderer);
   }
-  
-  
+
   SDL_Quit();
-  printf("Hello,world\n");
+  printf("Goodbye\n");
   return 0;
 }
