@@ -87,6 +87,9 @@ int main(void) {
                 .pressed = false};
 
   char *text = "DEFAULT TEXT";
+  SDL_Surface *t_surface;
+  SDL_Texture *t_texture;
+  float scroll_y = 0.0f;
 
   bool running = true;
   while (running) {
@@ -118,10 +121,37 @@ int main(void) {
             path[strcspn(path, "\n")] = '\0';
 
             text = read_file(path);
+            t_surface = TTF_RenderText_Blended_Wrapped(small_font, text,
+                                                       strlen(text), white, 0);
+            ;
+            t_texture = SDL_CreateTextureFromSurface(renderer, t_surface);
             pageStatus = 1;
           } else {
             SDL_Log("Unabled to open pipe");
           }
+        }
+      }
+
+      // Scrollable
+      if (event.type == SDL_EVENT_MOUSE_WHEEL && pageStatus == 1) {
+        // scroll down -> event.wheel.y is negative
+        // we let viewport stay fixed
+        // move the texture of content
+        scroll_y += event.wheel.y * 30.0f;
+
+        if (scroll_y > 0) {
+          scroll_y = 0;
+        }
+
+        float min_scroll = 600 - t_surface->h - 20;
+
+        // it is not scrollable
+        if (min_scroll > 0) {
+          min_scroll = 0;
+        }
+
+        if (scroll_y < min_scroll) {
+          scroll_y = min_scroll;
         }
       }
     }
@@ -134,15 +164,12 @@ int main(void) {
 
       draw_button(renderer, font, &btn);
     } else if (pageStatus == 1) {
+      // Editor Mode
       // char* line = strtok(text, "\n");
-      // while(line) {
-
-      // }
-      SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(
-          small_font, text, strlen(text), white, 0);
-      SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-      SDL_FRect dst = {.x = 10, .y = 10, .w = surface->w, .h = surface->h};
-      SDL_RenderTexture(renderer, texture, NULL, &dst);
+      // while(line) {}
+      SDL_FRect t_dst = {
+          .x = 10, .y = 10 + scroll_y, .w = t_surface->w, .h = t_surface->h};
+      SDL_RenderTexture(renderer, t_texture, NULL, &t_dst);
     }
 
     SDL_RenderPresent(renderer);
