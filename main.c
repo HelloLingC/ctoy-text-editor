@@ -23,7 +23,7 @@ char *read_file(const char *f_path) {
   FILE *fp = fopen(f_path, "r");
   if (fp == NULL) {
     printf("Cannot read file, its unreachable: [%s]", f_path);
-    exit(0); // Todo: no abruptly quit
+    return NULL;
   }
   // fseek moves the file position indicator associated with the FILE stream.
   // SEED_END is a macro in C std lib, C uses API from the OS to
@@ -36,7 +36,8 @@ char *read_file(const char *f_path) {
   char *text = malloc(size + 1);
   if (!text) {
     printf("Unable to malloc a string when reading file!");
-    exit(0);
+    fclose(fp);
+    return NULL;
   }
   fread(text, 1, size, fp);
   text[size] = '\0';
@@ -58,17 +59,17 @@ int main(void) {
     SDL_Log("Failed to load dont: %s", SDL_GetError());
     exit(0);
   }
-
   TTF_Font *small_font =
       TTF_OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", 16.0f);
 
   SDL_Window *window = NULL;
   SDL_Renderer *renderer = NULL;
 
-  sdl_check(
-      SDL_CreateWindowAndRenderer("Hello", 800, 600, 0, &window, &renderer));
+  sdl_check(SDL_CreateWindowAndRenderer("Ctoy Text Editor", 800, 600, 0,
+                                        &window, &renderer));
 
   SDL_Color white = {255, 255, 255, 255};
+
   // Prepare title
   SDL_Surface *surface =
       TTF_RenderText_Blended(font, "Hello and Welcome", 0, white);
@@ -81,10 +82,15 @@ int main(void) {
                    (float)surface->h};
   SDL_DestroySurface(surface);
 
-  Button btn = {.rect = {300.0f, 250.0f, 200.0f, 70.0f},
-                .text = "Open file",
-                .hovered = false,
-                .pressed = false};
+  Button open_file_btn = {.rect = {300.0f, 250.0f, 200.0f, 70.0f},
+                          .text = "Open file",
+                          .hovered = false,
+                          .pressed = false};
+
+  Button back_btn = {.rect = {.x = 0.0f, .y = 0.0f, .w = 90.0f, .h = 30.0f},
+                     .text = "<-Back",
+                     .hovered = false,
+                     .pressed = false};
 
   char *text = "DEFAULT TEXT";
   SDL_Surface *t_surface;
@@ -100,13 +106,18 @@ int main(void) {
       }
 
       if (event.type == SDL_EVENT_MOUSE_MOTION) {
-        btn.hovered = point_in_rect(event.motion.x, event.motion.y, &btn.rect);
+        open_file_btn.hovered =
+            point_in_rect(event.motion.x, event.motion.y, &open_file_btn.rect);
+        back_btn.hovered =
+            point_in_rect(event.motion.x, event.motion.y, &back_btn.rect);
       }
 
       if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
           event.button.button == SDL_BUTTON_LEFT) {
-        if (point_in_rect(event.button.x, event.button.y, &btn.rect)) {
-          printf("CLICKED\n");
+        if (point_in_rect(event.motion.x, event.motion.y, &back_btn.rect)) {
+          pageStatus = 0;
+        } else if (point_in_rect(event.button.x, event.button.y,
+                                 &open_file_btn.rect)) {
           FILE *pipe = popen("osascript -e 'POSIX path of (choose file)'", "r");
           if (pipe) {
             char path[1024];
@@ -121,13 +132,16 @@ int main(void) {
             path[strcspn(path, "\n")] = '\0';
 
             text = read_file(path);
-            t_surface = TTF_RenderText_Blended_Wrapped(small_font, text,
-                                                       strlen(text), white, 0);
-            ;
-            t_texture = SDL_CreateTextureFromSurface(renderer, t_surface);
-            pageStatus = 1;
+            if (text) {
+              t_surface = TTF_RenderText_Blended_Wrapped(
+                  small_font, text, strlen(text), white, 0);
+              ;
+              t_texture = SDL_CreateTextureFromSurface(renderer, t_surface);
+              pageStatus = 1;
+            }
+            pclose(pipe);
           } else {
-            SDL_Log("Unabled to open pipe");
+            printf("Unabled to open pipe");
           }
         }
       }
@@ -162,14 +176,16 @@ int main(void) {
       // Draw main title
       SDL_RenderTexture(renderer, texture, NULL, &dst);
 
-      draw_button(renderer, font, &btn);
+      draw_button(renderer, font, &open_file_btn);
     } else if (pageStatus == 1) {
       // Editor Mode
       // char* line = strtok(text, "\n");
       // while(line) {}
       SDL_FRect t_dst = {
-          .x = 10, .y = 10 + scroll_y, .w = t_surface->w, .h = t_surface->h};
+          .x = 10, .y = 35 + scroll_y, .w = t_surface->w, .h = t_surface->h};
       SDL_RenderTexture(renderer, t_texture, NULL, &t_dst);
+
+      draw_button(renderer, small_font, &back_btn);
     }
 
     SDL_RenderPresent(renderer);
