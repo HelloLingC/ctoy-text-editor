@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int pageStatus = 0;
 
@@ -14,6 +15,52 @@ void sdl_check(bool res) {
     exit(0);
   }
 }
+
+char *replace_string(const char *orig, const char *old, const char *new,
+                     bool notice) {
+  char *result;
+  size_t len = strlen(orig);
+  size_t old_len = strlen(old);
+  size_t new_len = strlen(new);
+
+  int cnt = 0;
+  // calculate how many times old string appear in string.
+  const char *p = orig;
+  // while ((p = strstr(p + 1, old))) {
+  //   cnt++;
+  //   printf("%d\n", cnt);
+  // }
+
+  while ((p = strstr(p, old)) != NULL) {
+    cnt++;
+    p += old_len;
+  }
+
+  result = (char *)malloc(len - (new_len - old_len) * cnt);
+  if (!result) {
+    return NULL;
+  }
+
+  char *mod_str = result;
+  while (cnt--) {
+    const char *next_match = strstr(orig, old);
+
+    memcpy(mod_str, orig, next_match - orig);
+    mod_str += next_match - orig;
+
+    memcpy(mod_str, new, new_len);
+    mod_str += new_len;
+
+    orig = next_match + old_len;
+
+    if (notice) {
+      printf("Replaced %s with %s\n", old, new);
+    }
+  }
+  strcpy(mod_str, orig); // strcpy also copy terminator \0
+  return result;
+}
+
 // Mainly used for button status detection
 static bool point_in_rect(float x, float y, const SDL_FRect *r) {
   return x >= r->x && x <= r->x + r->w && y >= r->y && y <= r->y + r->h;
@@ -65,7 +112,11 @@ char *read_file() {
   // we need remove the newline:
   path[strcspn(path, "\n")] = '\0';
 
-  return read_file_by_path(path);
+  char *text = read_file_by_path(path);
+
+  // normalize CRLF to LF
+  text = replace_string(text, "\r\n", "\n", true);
+  return text;
 }
 
 int main(void) {
