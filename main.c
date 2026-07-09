@@ -10,7 +10,7 @@ static int pageStatus = 0;
 
 void sdl_check(bool res) {
   if (!res) {
-    SDL_Log("SDL Failed: %s", SDL_GetError());
+    SDL_Log("SDL Failed: %s\n", SDL_GetError());
     exit(0);
   }
 }
@@ -19,10 +19,10 @@ static bool point_in_rect(float x, float y, const SDL_FRect *r) {
   return x >= r->x && x <= r->x + r->w && y >= r->y && y <= r->y + r->h;
 }
 
-char *read_file(const char *f_path) {
+char *read_file_by_path(const char *f_path) {
   FILE *fp = fopen(f_path, "r");
   if (fp == NULL) {
-    printf("Cannot read file, its unreachable: [%s]", f_path);
+    printf("Cannot read file, its unreachable: [%s]\n", f_path);
     return NULL;
   }
   // fseek moves the file position indicator associated with the FILE stream.
@@ -32,10 +32,10 @@ char *read_file(const char *f_path) {
   fseek(fp, 0, SEEK_END);
   long size = ftell(fp);
   rewind(fp);
-  printf("Try to read a file with size of %ld", size);
+  printf("Try to read a file with size of %ld\n", size);
   char *text = malloc(size + 1);
   if (!text) {
-    printf("Unable to malloc a string when reading file!");
+    printf("Unable to malloc a string when reading the file!\n");
     fclose(fp);
     return NULL;
   }
@@ -43,6 +43,29 @@ char *read_file(const char *f_path) {
   text[size] = '\0';
   fclose(fp);
   return text;
+}
+
+char *read_file() {
+
+  FILE *pipe = popen("osascript -e 'POSIX path of (choose file)'", "r");
+  if (!pipe) {
+    return NULL;
+  }
+
+  char path[1024];
+  if (fgets(path, sizeof(path), pipe) != NULL) {
+    printf("File selected: %s", path);
+  }
+
+  fclose(pipe);
+
+  // fgets parsing stops if a newline character is found
+  // and fgets keeps the newline when it reads a line
+  // and '\n' will cause fopen cannot open the file
+  // we need remove the newline:
+  path[strcspn(path, "\n")] = '\0';
+
+  return read_file_by_path(path);
 }
 
 int main(void) {
@@ -78,7 +101,7 @@ int main(void) {
   float tw, th = 0;
   SDL_GetTextureSize(texture, &tw, &th);
 
-  SDL_FRect dst = {800 / 2 - tw / 2, 50.0f, (float)surface->w,
+  SDL_FRect dst = {800.0f / 2 - tw / 2, 50.0f, (float)surface->w,
                    (float)surface->h};
   SDL_DestroySurface(surface);
 
@@ -92,7 +115,7 @@ int main(void) {
                      .hovered = false,
                      .pressed = false};
 
-  char *text = "DEFAULT TEXT";
+  char *text = "DEFAULT FALLBACK TEXT";
   SDL_Surface *t_surface;
   SDL_Texture *t_texture;
   float scroll_y = 0.0f;
@@ -114,34 +137,24 @@ int main(void) {
 
       if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
           event.button.button == SDL_BUTTON_LEFT) {
-        if (point_in_rect(event.motion.x, event.motion.y, &back_btn.rect)) {
+        back_btn.pressed =
+            point_in_rect(event.motion.x, event.motion.y, &back_btn.rect);
+        open_file_btn.pressed =
+            point_in_rect(event.button.x, event.button.y, &open_file_btn.rect);
+        if (back_btn.pressed) {
+          // Go back to main screen
           pageStatus = 0;
-        } else if (point_in_rect(event.button.x, event.button.y,
-                                 &open_file_btn.rect)) {
-          FILE *pipe = popen("osascript -e 'POSIX path of (choose file)'", "r");
-          if (pipe) {
-            char path[1024];
-            if (fgets(path, sizeof(path), pipe) != NULL) {
-              printf("File selected: %s", path);
-            }
-
-            // fgets parsing stops if a newline character is found
-            // and fgets keeps the newline when it reads a line
-            // and '\n' will cause fopen cannot open the file
-            // we need remove the newline:
-            path[strcspn(path, "\n")] = '\0';
-
-            text = read_file(path);
-            if (text) {
-              t_surface = TTF_RenderText_Blended_Wrapped(
-                  small_font, text, strlen(text), white, 0);
-              ;
-              t_texture = SDL_CreateTextureFromSurface(renderer, t_surface);
-              pageStatus = 1;
-            }
-            pclose(pipe);
+          scroll_y = 0;
+        } else if (open_file_btn.pressed) {
+          text = read_file();
+          if (text) {
+            t_surface = TTF_RenderText_Blended_Wrapped(small_font, text,
+                                                       strlen(text), white, 0);
+            ;
+            t_texture = SDL_CreateTextureFromSurface(renderer, t_surface);
+            pageStatus = 1;
           } else {
-            printf("Unabled to open pipe");
+            printf("Unable to read file");
           }
         }
       }
@@ -151,7 +164,7 @@ int main(void) {
         // scroll down -> event.wheel.y is negative
         // we let viewport stay fixed
         // move the texture of content
-        scroll_y += event.wheel.y * 30.0f;
+        scroll_y += event.wheel.y * 25.0f;
 
         if (scroll_y > 0) {
           scroll_y = 0;
