@@ -1,11 +1,11 @@
 #include "button.h"
+#include "document.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 static int pageStatus = 0;
 
@@ -166,6 +166,12 @@ int main(void) {
                      .hovered = false,
                      .pressed = false};
 
+  Document doc;
+  if (!document_init(&doc, 1024)) {
+    printf("Cannot init document struct");
+    exit(0);
+  }
+
   char *text = "DEFAULT FALLBACK TEXT";
   SDL_Surface *t_surface;
   SDL_Texture *t_texture;
@@ -256,6 +262,7 @@ int main(void) {
   }
 
   SDL_Quit();
+  document_destroy(&doc);
   printf("Goodbye\n");
   return 0;
 }
