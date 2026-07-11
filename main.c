@@ -96,6 +96,7 @@ char *read_file() {
 
   FILE *pipe = popen("osascript -e 'POSIX path of (choose file)'", "r");
   if (!pipe) {
+    printf("Cannot open choose file pipe!");
     return NULL;
   }
 
@@ -113,6 +114,9 @@ char *read_file() {
   path[strcspn(path, "\n")] = '\0';
 
   char *text = read_file_by_path(path);
+  if (!text) {
+    return NULL;
+  }
 
   // normalize CRLF to LF
   text = replace_string(text, "\r\n", "\n", true);
@@ -141,6 +145,8 @@ int main(void) {
 
   sdl_check(SDL_CreateWindowAndRenderer("Ctoy Text Editor", 800, 600, 0,
                                         &window, &renderer));
+
+  sdl_check(SDL_StartTextInput(window));
 
   SDL_Color white = {255, 255, 255, 255};
 
@@ -172,10 +178,12 @@ int main(void) {
     exit(0);
   }
 
-  char *text = "DEFAULT FALLBACK TEXT";
-  SDL_Surface *t_surface;
-  SDL_Texture *t_texture;
+  SDL_Surface *t_surface = NULL;
+  SDL_Texture *t_texture = NULL;
+  SDL_Surface *new_t_surface;
+  SDL_Texture *new_t_texture;
   float scroll_y = 0.0f;
+  bool document_changed = false;
 
   bool running = true;
   while (running) {
@@ -192,32 +200,66 @@ int main(void) {
             point_in_rect(event.motion.x, event.motion.y, &back_btn.rect);
       }
 
+      if (event.type == SDL_EVENT_TEXT_INPUT && pageStatus == 1) {
+        if (!document_append_string(&doc, event.text.text)) {
+          printf("Cannot append string to document struct");
+          continue;
+        }
+        document_changed = true;
+      }
+
+      if (event.type == SDL_EVENT_KEY_DOWN && pageStatus == 1) {
+        if (event.key.key == SDLK_BACKSPACE) {
+          if (document_backspace(&doc)) {
+            document_changed = true;
+          } else {
+            printf("Cannot perform backspace");
+          }
+        }
+      }
+
       if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
           event.button.button == SDL_BUTTON_LEFT) {
         back_btn.pressed =
             point_in_rect(event.motion.x, event.motion.y, &back_btn.rect);
         open_file_btn.pressed =
             point_in_rect(event.button.x, event.button.y, &open_file_btn.rect);
+
         if (back_btn.pressed) {
           // Go back to main screen
           pageStatus = 0;
           scroll_y = 0;
         } else if (open_file_btn.pressed) {
-          text = read_file();
-          if (text) {
-            t_surface = TTF_RenderText_Blended_Wrapped(small_font, text,
-                                                       strlen(text), white, 0);
-            ;
-            t_texture = SDL_CreateTextureFromSurface(renderer, t_surface);
-            pageStatus = 1;
-          } else {
-            printf("Unable to read file");
+          char *text = read_file();
+
+          if (!text) {
+            printf("Cannot read the file\n");
+            continue;
           }
+
+          document_clear(&doc);
+
+          bool appended = document_append_string(&doc, text);
+          free(text);
+          text = NULL;
+          if (!appended) {
+            printf("Cannot appeend string when reading the file");
+            continue;
+          }
+
+          document_changed = true;
+          pageStatus = 1;
         }
       }
 
       // Scrollable
       if (event.type == SDL_EVENT_MOUSE_WHEEL && pageStatus == 1) {
+        if (!t_surface) {
+          // User may currentlt type something
+          // t_surface could be NULL;
+          continue;
+        }
+
         // scroll down -> event.wheel.y is negative
         // we let viewport stay fixed
         // move the texture of content
@@ -251,6 +293,31 @@ int main(void) {
       // Editor Mode
       // char* line = strtok(text, "\n");
       // while(line) {}
+
+      if (document_changed) {
+
+        new_t_surface = TTF_RenderText_Blended_Wrapped(small_font, doc.buffer,
+                                                       doc.length, white, 0);
+        ;
+        if (!new_t_surface) {
+          printf("%s\n", SDL_GetError());
+          continue;
+        }
+        new_t_texture = SDL_CreateTextureFromSurface(renderer, new_t_surface);
+        if (!new_t_texture) {
+          printf("%s\n", SDL_GetError());
+          SDL_DestroySurface(new_t_surface);
+          continue;
+        }
+
+        SDL_DestroySurface(t_surface);
+        SDL_DestroyTexture(t_texture);
+        t_surface = new_t_surface;
+        t_texture = new_t_texture;
+
+        document_changed = false;
+      }
+      // Draw article content
       SDL_FRect t_dst = {
           .x = 10, .y = 35 + scroll_y, .w = t_surface->w, .h = t_surface->h};
       SDL_RenderTexture(renderer, t_texture, NULL, &t_dst);
@@ -261,6 +328,7 @@ int main(void) {
     SDL_RenderPresent(renderer);
   }
 
+  SDL_StopTextInput(window);
   SDL_Quit();
   document_destroy(&doc);
   printf("Goodbye\n");

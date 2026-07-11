@@ -25,6 +25,11 @@ void document_destroy(Document *doc) {
   doc->capacity = 0;
 }
 
+void document_clear(Document *doc) {
+  doc->buffer[0] = '\0';
+  doc->length = 0;
+}
+
 // args: c should not be '\0'
 bool document_append_char(Document *doc, char c) {
   if (c == '\0') {
