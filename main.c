@@ -16,6 +16,7 @@ void sdl_check(bool res) {
   }
 }
 
+// this function won't free orig arg
 char *replace_string(const char *orig, const char *old, const char *new,
                      bool notice) {
   char *result;
@@ -101,11 +102,13 @@ char *read_file() {
   }
 
   char path[1024];
-  if (fgets(path, sizeof(path), pipe) != NULL) {
-    printf("File selected: %s", path);
+  if (fgets(path, sizeof(path), pipe) == NULL) {
+    printf("No path received: eof=%d, error=%d", feof(pipe), ferror(pipe));
+    pclose(pipe);
+    return NULL;
   }
 
-  fclose(pipe);
+  pclose(pipe);
 
   // fgets parsing stops if a newline character is found
   // and fgets keeps the newline when it reads a line
@@ -119,8 +122,15 @@ char *read_file() {
   }
 
   // normalize CRLF to LF
-  text = replace_string(text, "\r\n", "\n", true);
-  return text;
+  char *temp = NULL;
+  temp = replace_string(text, "\r\n", "\n", true);
+
+  free(text);
+  if (!temp) {
+    return NULL;
+  }
+
+  return temp;
 }
 
 int main(void) {
@@ -184,6 +194,7 @@ int main(void) {
   SDL_Texture *new_t_texture;
   float scroll_y = 0.0f;
   bool document_changed = false;
+  size_t cursor_pos = 0;
 
   bool running = true;
   while (running) {
@@ -201,19 +212,30 @@ int main(void) {
       }
 
       if (event.type == SDL_EVENT_TEXT_INPUT && pageStatus == 1) {
-        if (!document_append_string(&doc, event.text.text)) {
+        if (!document_insert_string(&doc, event.text.text, cursor_pos)) {
           printf("Cannot append string to document struct");
           continue;
         }
+        cursor_pos += strlen(event.text.text);
         document_changed = true;
       }
 
       if (event.type == SDL_EVENT_KEY_DOWN && pageStatus == 1) {
         if (event.key.key == SDLK_BACKSPACE) {
-          if (document_backspace(&doc)) {
+          if (document_backspace_at(&doc, cursor_pos)) {
             document_changed = true;
+            cursor_pos -= 1;
           } else {
-            printf("Cannot perform backspace");
+            printf("Cannot perform backspace\n");
+          }
+        }
+
+        if (event.key.key == SDLK_RETURN) {
+          if (document_insert_char(&doc, '\n', cursor_pos)) {
+            document_changed = true;
+            cursor_pos += 1;
+          } else {
+            printf("Cannot perform return key\n");
           }
         }
       }
@@ -328,6 +350,9 @@ int main(void) {
     SDL_RenderPresent(renderer);
   }
 
+  // Resource relif
+  TTF_Quit();
+  SDL_DestroyTexture(t_texture);
   SDL_StopTextInput(window);
   SDL_Quit();
   document_destroy(&doc);

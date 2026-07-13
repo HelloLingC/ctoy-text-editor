@@ -85,3 +85,71 @@ bool document_backspace(Document *doc) {
   doc->length -= 1;
   return true;
 }
+
+bool document_backspace_at(Document *doc, size_t pos) {
+  if (doc->length == 0) {
+    return false;
+  }
+  if (pos == 0) {
+    return false;
+  }
+  if (pos > doc->length) {
+    return false;
+  }
+  memmove(doc->buffer + pos - 1, doc->buffer + pos, doc->length - pos + 1);
+  doc->length -= 1;
+  return true;
+}
+
+bool document_insert_char(Document *doc, char c, size_t pos) {
+  if (c == '\0') {
+    return false;
+  }
+  if (pos > doc->length) {
+    return false;
+  }
+  if (doc->length + 2 > doc->capacity) {
+    char *temp = realloc(doc->buffer, doc->length + 2);
+    if (!temp) {
+      return false;
+    }
+    doc->buffer = temp;
+    doc->capacity = doc->length + 2;
+  }
+
+  memmove(doc->buffer + pos + 1, doc->buffer + pos, doc->length - pos + 1);
+  doc->buffer[pos] = c;
+  doc->length++;
+
+  return true;
+}
+
+bool document_insert_string(Document *doc, const char *string, size_t pos) {
+  if (string[0] == '\0') {
+    return false;
+  }
+  if (pos > doc->length) {
+    return false;
+  }
+  size_t str_len = strlen(string);
+
+  // subtraction avoids unsigned arithmetic wrapping
+  if (doc->length + 1 > SIZE_MAX - str_len) {
+    return false;
+  }
+
+  size_t needed_cap = doc->length + str_len + 1;
+  if (needed_cap > doc->capacity) {
+    char *temp = realloc(doc->buffer, needed_cap);
+    if (!temp) {
+      return false;
+    }
+    doc->buffer = temp;
+    doc->capacity = needed_cap;
+  }
+  memmove(doc->buffer + pos + str_len, doc->buffer + pos,
+          doc->length - pos + 1);
+  memcpy(doc->buffer + pos, string, str_len);
+  doc->length += str_len;
+  return true;
+}
